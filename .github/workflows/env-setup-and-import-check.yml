@@ -112,23 +112,38 @@ jobs:
             
 
       - name: Run the importing test
+        shell: bash -l {0}
         run: |
+            set -Eeuo pipefail
+      
             eval "$(conda shell.bash hook)"
-            cd benchmarks/matbench_v0.1_${{ inputs.model }}
-
-            # Activate Conda environment
-            conda activate ${{ inputs.model }}
-
-            # Convert Jupyter notebooks to Python scripts (if they exist, and jupyter should be installed in this case)
+            cd "benchmarks/matbench_v0.1_${{ inputs.model }}"
+      
+            conda activate "${{ inputs.model }}"
+      
+            # 确保 nbconvert / jupyter-core 可用（先试 import，不行再装）
+            if ! python -c "import nbconvert, jupyter_core" >/dev/null 2>&1; then
+              conda install -y nbconvert jupyter-core || python -m pip install -U nbconvert jupyter
+            fi
+      
             shopt -s nullglob
-            for notebook in *.ipynb; do
-              jupyter nbconvert --to script "$notebook"
+      
+            # 用模块方式调用 nbconvert，避免某些 runner 上 jupyter 脚本不在 PATH
+            for nb in *.ipynb; do
+              python -m jupyter nbconvert --to script "$nb"
             done
-
-            # Extract import statements only
-            for pyfile in *.py; do
-              grep -E "^(import|from .* import)" "$pyfile" >> imports_only.py
-            done
+      
+            # 生成 imports_only.py：避免“输入即输出”问题，先写到临时文件再原子替换
+            tmpfile="$(mktemp)"
+            # 仅当前目录下的 .py（如需递归可换成：grep -R --include="*.py" .）
+            for py in *.py; do
+              [[ "$py" == "imports_only.py" ]] && continue
+              # 更稳的正则：匹配 "import xxx" 或 "from xxx import yyy"
+              grep -h -E '^(import|from[[:space:]].*import)' "$py" || true
+            done > "$tmpfile"
+            mv "$tmpfile" imports_only.py
+      
+            # 运行导入测试（文件为空也没关系）
             python imports_only.py
           
             OUT="${{ inputs.model }}-${{ inputs.python_version }}.yml"
@@ -137,9 +152,9 @@ jobs:
             ls -lh "$OUT"
           
           
-        - name: Upload exported env
-          uses: actions/upload-artifact@v4
-          with:
+      - name: Upload exported env
+        uses: actions/upload-artifact@v4
+        with:
             name: ${{ inputs.model }}-${{ inputs.python_version }}-env
             path: benchmarks/matbench_v0.1_${{ inputs.model }}/${{ inputs.model }}-${{ inputs.python_version }}.yml
             if-no-files-found: error

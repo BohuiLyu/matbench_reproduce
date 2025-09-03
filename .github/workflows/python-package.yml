@@ -6,6 +6,9 @@ name: Continuous Integration
 on:
   push:
     branches: [main]
+  paths:
+    - .github/workflows/python-package.yml
+    
   pull_request:
     branches: [main]
 
