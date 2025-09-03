@@ -13,11 +13,13 @@ jobs:
     outputs:
       python_versions: ${{ steps.set-versions.outputs.python_versions }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 
+
       - name: Get all the folder names in the benchmarks directory (remove the prefix "matbench_v0.1_" and the suffix '/' and enclose each folder name in single quotes) 
         id: get-folders
         run: |
             cd benchmarks
-
             models='"automatminer_expressv2020","Auto-sklearn","Ax_10_90_CrabNet_v1.2.7","Ax_CrabNet_v1.2.1"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
@@ -28,13 +30,15 @@ jobs:
 
 
   # Default env setup, by installing the package indicated in the requirements field in info.json
-  json-info:
+  default-env-setup:
+    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }}"  
     needs: generate-matrix
     strategy:
       fail-fast: false
       matrix:
         python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
         model: ${{ fromJson(needs.generate-matrix.outputs.models) }}
+        python_package_installer: ['pip', 'conda']
     uses: ./.github/workflows/env-setup-and-import-check.yml
     with:
       model: ${{ matrix.model }}
