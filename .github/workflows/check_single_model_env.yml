@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       python_versions: ${{ steps.set-versions.outputs.python_versions }}
+      models: ${{ steps.get-folders.outputs.models }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4 
@@ -31,7 +32,7 @@ jobs:
 
   # Default env setup, by installing the package indicated in the requirements field in info.json
   default-env-setup:
-    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }}"  
+    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }} with ${{ matrix.python_package_installer }}"  
     needs: generate-matrix
     strategy:
       fail-fast: false
