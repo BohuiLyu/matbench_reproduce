@@ -21,7 +21,7 @@ jobs:
         id: get-folders
         run: |
             cd benchmarks
-            models='"automatminer_expressv2020","Auto-sklearn","Ax_10_90_CrabNet_v1.2.7","Ax_CrabNet_v1.2.1"'
+            models='"Ax_SAASBO_CrabNet_v1.2.7","cgcnnv2019","coGN","coNGN","CrabNet"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
       - name: Define Python version list
