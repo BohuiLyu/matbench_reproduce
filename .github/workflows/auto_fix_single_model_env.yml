@@ -1,0 +1,32 @@
+name: Auto Fix Single Model Env
+
+on: 
+  push:
+    # Run only when this file is modified
+    paths:
+      - .github/workflows/auto_fix_single_model_env.yml
+      - .github/workflows/env-autofix-and-import-check.yml
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      python_versions: ${{ steps.set-versions.outputs.python_versions }}
+    steps:
+      - name: Define Python version list
+        id: set-versions
+        run: |
+          echo "python_versions=['3.6','3.7','3.8','3.9','3.10','3.11','3.12']" >> $GITHUB_OUTPUT
+
+
+  # Default env setup, by installing the package indicated in the requirements field in info.json
+  json-info:
+    needs: generate-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
+    uses: ./.github/workflows/env-autofix-and-import-check.yml
+    with:
+      model: "RFLR"
+      python_version: ${{ matrix.python_version }}

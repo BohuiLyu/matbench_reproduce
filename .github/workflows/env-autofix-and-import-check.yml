@@ -1,0 +1,207 @@
+name: env-autofix-and-import-check
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "The model name"
+        required: true
+        type: string
+      python_version:
+        description: "Python version to use"
+        required: true
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Create and Activate Conda Env
+        run: |
+          eval "$(conda shell.bash hook)"
+          cd benchmarks/matbench_v0.1_${{ inputs.model }}
+
+          echo "Creating Conda environment '${{ inputs.model }}' with Python ${{ inputs.python_version }}..."
+          conda create -y --name ${{ inputs.model }} python=${{ inputs.python_version }}
+
+          echo "Activating environment..."
+          conda activate ${{ inputs.model }}
+
+          echo "Extracting packages from info.json..."
+          PACKAGES=$(python -c "import json; print(' '.join(json.load(open('info.json'))['requirements']['python']))")
+          echo "Initial packages: $PACKAGES"
+
+          # We'll attempt up to 5 auto-fix loops in case multiple packages fail one by one
+          MAX_TRIES=5
+          for ((i=1; i<=MAX_TRIES; i++)); do
+            echo "==== Attempt $i: pip install ===="
+            if pip install $PACKAGES 2> pip_error.log; then
+              echo "✅ Install succeeded on iteration $i!"
+              break
+            fi
+          
+            # 两类典型错误：1) 找不到满足条件的版本；2) 解析到冲突
+            ERR_LINE_REQ=$(grep -m1 "Could not find a version that satisfies the requirement" pip_error.log || true)
+            ERR_LINE_CONF=$(grep -m1 "^ERROR: Cannot install " pip_error.log | grep -m1 "because these package versions have conflicting dependencies" || true)
+            #ERR_LINE_WHEEL=$(grep -m1 "ERROR: Failed building wheel for" pip_error.log || true)
+          
+            if [[ -n "$ERR_LINE_REQ" ]]; then
+              FAILING_PKG=$(sed -E 's#.*requirement ([^ )]+).*#\1#' <<<"$ERR_LINE_REQ")
+              echo "Failing package: $FAILING_PKG"
+          
+              FIXED_PKG=""
+              # 1) If there's a plus sign, remove + suffix
+              if [[ "$FAILING_PKG" =~ ^([^=]+)==([^+[:space:]]+)\+ ]]; then
+                FIXED_PKG="${BASH_REMATCH[1]}==${BASH_REMATCH[2]}"
+                echo "Auto-fix: strip '+…' → $FIXED_PKG"
+              else
+                # 2) If there's a version, remove entire version => pkg==1.10.0 => pkg
+                base_pkg=$(sed -E 's/==[^ ]+//' <<<"$FAILING_PKG")
+                if [[ "$base_pkg" != "$FAILING_PKG" ]]; then
+                  FIXED_PKG="$base_pkg"
+                  echo "Auto-fix: drop version → $FIXED_PKG"
+                fi
+              fi
+          
+              # If no fix so far, or the fix is still empty, let's just remove everything after '=='
+              # This might handle multiple plus signs or unusual patterns
+              if [[ -z "$FIXED_PKG" ]]; then
+                FIXED_PKG=$(sed -E 's/\+[^ ]+//; s/==[^ ]+//' <<<"$FAILING_PKG")
+                if [[ "$FIXED_PKG" == "$FAILING_PKG" ]]; then
+                  echo "No auto-fix possible for $FAILING_PKG."; exit 1
+                fi
+                echo "Fallback fix: $FAILING_PKG → $FIXED_PKG"
+              fi
+          
+              # 安全替换（精确匹配整行 token，避免 sed 正则被 [] 等字符干扰）
+              tr ' ' '\n' <<<"$PACKAGES" \
+                | awk -v old="$FAILING_PKG" -v new="$FIXED_PKG" '{print ($0==old)?new:$0}' \
+                | paste -sd' ' - > new_pkgs.txt
+              PACKAGES=$(<new_pkgs.txt)
+              echo "Updated packages list: $PACKAGES"
+              continue
+            elif [[ -n "$ERR_LINE_CONF" ]]; then
+              # ERROR: Cannot install a,b and c because these package versions have conflicting dependencies.
+              list=${ERR_LINE_CONF#ERROR: Cannot install }
+              list=${list%% because*}
+              list=${list// and /, }
+              printf '%s\n' "$list" \
+                | tr ',' '\n' \
+                | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
+                | sed -E 's/\[[^]]*\]//g; s/==.*$//; s/\.+$//' \
+                | awk 'NF' | sort -u > conflict_pkgs.txt
+          
+              echo "Conflicting packages (names only):"; cat conflict_pkgs.txt
+          
+              NEW_PACKAGES=""
+              for tok in $PACKAGES; do
+                base="${tok%%==*}"; name="${base%%[*}"
+                if grep -qx "$name" conflict_pkgs.txt; then
+                  tok="$base"   # 只对冲突包移除版本锁定
+                end_if=true
+                fi
+                NEW_PACKAGES+="$tok "
+              done
+              PACKAGES=$(echo "$NEW_PACKAGES" | xargs)
+              echo "Updated packages list: $PACKAGES"
+              continue
+            #elif [[ -n "$ERR_LINE_WHEEL" ]]; then
+            else
+              # 例：ERROR: Failed building wheel for pymatgen.
+              echo "⚠️  Detected error. Unpinning all versions in PACKAGES…"
+              # 把空格分隔的 tokens 逐个处理：
+              # - 删除任意版本运算符 + 版本号（==, >=, <=, ~=, !=, ===）
+              # - 去重但保序
+              PACKAGES=$(
+                tr ' ' '\n' <<<"$PACKAGES" \
+                | sed -E 's/(==|>=|<=|~=|!=|===)[^ ]+//' \
+                | awk 'NF && !seen[$0]++' \
+                | paste -sd' ' -
+              )
+              echo "Unpinned PACKAGES: $PACKAGES"
+            #else
+              #echo "❌ Unhandled pip error (first 120 lines):"
+              #sed -n '1,120p' pip_error.log
+              #exit 1
+            fi
+          done
+          
+          if (( i > MAX_TRIES )); then
+            echo "❌ Failed after $MAX_TRIES attempts."
+            exit 1
+          fi
+
+          # If we exit the loop and still haven't installed successfully, we proceed anyway
+          # but the environment might not be fully correct
+          echo "Final packages in environment: $PACKAGES"
+
+      - name: Install matbench
+        run: |
+            eval "$(conda shell.bash hook)"
+            cd benchmarks/matbench_v0.1_${{ inputs.model }}
+
+            # Activate Conda environment
+            conda activate ${{ inputs.model }}
+            if python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('matbench') else 1)"; then
+              exit 0
+            else
+              pip install matbench
+            fi
+            
+
+      - name: Run the importing test
+        shell: bash -l {0}
+        run: |
+          set -Eeuo pipefail
+      
+          eval "$(conda shell.bash hook)"
+          cd "benchmarks/matbench_v0.1_${{ inputs.model }}"
+      
+          conda activate "${{ inputs.model }}"
+      
+          # 确保 nbconvert / jupyter-core 可用（先试 import，不行再装）
+          if ! python -c "import nbconvert, jupyter_core" >/dev/null 2>&1; then
+            conda install -y nbconvert jupyter-core || python -m pip install -U nbconvert jupyter
+          fi
+      
+          shopt -s nullglob
+      
+          # 用模块方式调用 nbconvert，避免某些 runner 上 jupyter 脚本不在 PATH
+          for nb in *.ipynb; do
+            python -m jupyter nbconvert --to script "$nb"
+          done
+      
+          # 生成 imports_only.py：避免“输入即输出”问题，先写到临时文件再原子替换
+          tmpfile="$(mktemp)"
+          # 仅当前目录下的 .py（如需递归可换成：grep -R --include="*.py" .）
+          for py in *.py; do
+            [[ "$py" == "imports_only.py" ]] && continue
+            # 更稳的正则：匹配 "import xxx" 或 "from xxx import yyy"
+            grep -h -E '^(import|from[[:space:]].*import)' "$py" || true
+          done > "$tmpfile"
+          mv "$tmpfile" imports_only.py
+      
+          # 运行导入测试（文件为空也没关系）
+          python imports_only.py
+          
+          OUT="${{ inputs.model }}-${{ inputs.python_version }}.yml"
+          conda env export -n "${{ inputs.model }}" --no-builds | sed '/^prefix: /d' > "$OUT"
+          echo "Environment exported to: $OUT"
+          ls -lh "$OUT"
+          
+          
+      - name: Upload exported env
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.model }}-${{ inputs.python_version }}-env
+          path: benchmarks/matbench_v0.1_${{ inputs.model }}/${{ inputs.model }}-${{ inputs.python_version }}.yml
+          if-no-files-found: error
