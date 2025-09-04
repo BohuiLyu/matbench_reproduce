@@ -186,15 +186,8 @@ jobs:
             python -m jupyter nbconvert --to script "$nb"
           done
       
-          # 生成 imports_only.py：避免“输入即输出”问题，先写到临时文件再原子替换
-          tmpfile="$(mktemp)"
-          # 仅当前目录下的 .py（如需递归可换成：grep -R --include="*.py" .）
-          for py in *.py; do
-            [[ "$py" == "imports_only.py" ]] && continue
-            # 更稳的正则：匹配 "import xxx" 或 "from xxx import yyy"
-            grep -h -E '^(import|from[[:space:]].*import)' "$py" || true
-          done > "$tmpfile"
-          mv "$tmpfile" imports_only.py
+          python -c "import ast,pathlib; m=set(); [m.add(a.name.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.Import) for a in node.names]; [m.add(node.module.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.ImportFrom) and node.level==0 and node.module]; open('imports_only.py','w',encoding='utf-8').write(''.join(f'import {x}\n' for x in sorted(filter(None,m))))"
+
       
           # 运行导入测试（文件为空也没关系）
           python imports_only.py
