@@ -91,7 +91,7 @@ jobs:
               # Extract and install required packages from info.json
               PACKAGES=$(python -c "import json; print(' '.join(json.load(open('info.json'))['requirements']['python']))")
               PACKAGES_CONDA=${PACKAGES//==/=}
-              pip install $PACKAGES || conda install $PACKAGES_CONDA -y
+              pip install $PACKAGES || conda install $PACKAGES_CONDA -c conda-forge -y
               echo "Conda environment created with info.json. Exiting step..."
 
             fi
