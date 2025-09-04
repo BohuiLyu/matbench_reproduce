@@ -89,7 +89,40 @@ jobs:
 
             else
               # Extract and install required packages from info.json
-              PACKAGES=$(python -c "import json; print(' '.join(json.load(open('info.json'))['requirements']['python']))")
+              PACKAGES=$(
+              python - <<'PY'
+              import json, sys
+              from pathlib import Path
+              
+              def flatten(x):
+                  if isinstance(x, str):
+                      yield x
+                  elif isinstance(x, (list, tuple)):
+                      for i in x:
+                          yield from flatten(i)
+                  elif isinstance(x, dict):
+                      for v in x.values():
+                          yield from flatten(v)
+                  # 其他类型忽略（None、数字等）
+              
+              data = json.load(open("info.json"))
+              items = data.get("requirements", {}).get("python", [])
+              
+              # 拍平 → 过滤空白 → 去重保序
+              seen = set()
+              out = []
+              for t in flatten(items):
+                  t = t.strip()
+                  if not t or t in seen:
+                      continue
+                  seen.add(t)
+                  out.append(t)
+              
+              print(" ".join(out))
+              PY
+              )
+              echo "PACKAGES: $PACKAGES"              
+              
               PACKAGES_CONDA=${PACKAGES//==/=}
               pip install $PACKAGES || conda install $PACKAGES_CONDA -c conda-forge -c pytorch -c pyg -y
               echo "Conda environment created with info.json. Exiting step..."
