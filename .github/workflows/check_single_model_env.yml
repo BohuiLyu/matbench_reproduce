@@ -21,7 +21,7 @@ jobs:
         id: get-folders
         run: |
             cd benchmarks
-            models='"Ax_SAASBO_CrabNet_v1.2.7","cgcnnv2019","coGN","coNGN","CrabNet"'
+            models='"alignn"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
       - name: Define Python version list
@@ -32,14 +32,14 @@ jobs:
 
   # Default env setup, by installing the package indicated in the requirements field in info.json
   default-env-setup:
-    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }} with ${{ matrix.python_package_installer }}"  
+    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }}"  
     needs: generate-matrix
     strategy:
       fail-fast: false
       matrix:
         python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
         model: ${{ fromJson(needs.generate-matrix.outputs.models) }}
-        python_package_installer: ['pip', 'conda']
+        #python_package_installer: ['pip', 'conda']
     uses: ./.github/workflows/env-setup-and-import-check.yml
     with:
       model: ${{ matrix.model }}
