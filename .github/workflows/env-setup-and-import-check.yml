@@ -90,7 +90,7 @@ jobs:
             else
               # Extract and install required packages from info.json
               PACKAGES=$(python -c "import json;d=json.load(open('info.json'));f=lambda x:[x] if isinstance(x,str) else [y for i in x for y in f(i)] if isinstance(x,(list,tuple)) else [y for v in x.values() for y in f(v)] if isinstance(x,dict) else [];seen=set();out=[];[out.append(s) or seen.add(s) for s in (t.strip() for t in f(d.get('requirements',{}).get('python',[]))) if s and s not in seen];print(' '.join(out))")
-)
+
               echo "PACKAGES: $PACKAGES"              
               
               PACKAGES_CONDA=${PACKAGES//==/=}
