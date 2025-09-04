@@ -77,7 +77,13 @@ jobs:
               if [[ -z "$FIXED_PKG" ]]; then
                 FIXED_PKG=$(sed -E 's/\+[^ ]+//; s/==[^ ]+//' <<<"$FAILING_PKG")
                 if [[ "$FIXED_PKG" == "$FAILING_PKG" ]]; then
-                  echo "No auto-fix possible for $FAILING_PKG."; exit 1
+                  PACKAGES=$(
+                    tr ' ' '\n' <<<"$PACKAGES" \
+                    | sed -E 's/(==|>=|<=|~=|!=|===)[^ ]+//' \
+                    | awk 'NF && !seen[$0]++' \
+                    | paste -sd' ' -
+                  )
+                  echo "Unpinned PACKAGES: $PACKAGES"
                 fi
                 echo "Fallback fix: $FAILING_PKG → $FIXED_PKG"
               fi
