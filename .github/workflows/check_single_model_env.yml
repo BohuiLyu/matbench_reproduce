@@ -21,7 +21,7 @@ jobs:
         id: get-folders
         run: |
             cd benchmarks
-            models='"cgcnnv2019"'
+            models='"coGN"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
       - name: Define Python version list
