@@ -21,7 +21,7 @@ jobs:
         id: get-folders
         run: |
             cd benchmarks
-            models='"SchNet_kgcnn_v2.1.0"'
+            models='"TPOT"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
       - name: Define Python version list
