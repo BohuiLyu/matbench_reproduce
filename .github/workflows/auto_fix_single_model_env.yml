@@ -28,5 +28,5 @@ jobs:
         python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
     uses: ./.github/workflows/env-autofix-and-import-check.yml
     with:
-      model: "Finder_v1.2_structure"
+      model: "GN-OA"
       python_version: ${{ matrix.python_version }}
