@@ -40,7 +40,7 @@ jobs:
         python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
         model: ${{ fromJson(needs.generate-matrix.outputs.models) }}
         #python_package_installer: ['pip', 'conda']
-    uses: ./.github/workflows/env-setup-and-import-check.yml
+    uses: ./.github/workflows/check-env-and-export.yml
     with:
       model: ${{ matrix.model }}
       python_version: ${{ matrix.python_version }}
