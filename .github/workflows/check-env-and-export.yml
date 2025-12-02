@@ -181,7 +181,7 @@ jobs:
 
           # 6. 使用 conda-pack 打包之前的算法环境（环境名就是 inputs.model）
           #   打包后的文件例如：<model>-<python>-packed.tar.gz
-          conda-pack -n "${{ inputs.model }}" -o "${{ inputs.model }}-${{ inputs.python_version }}-packed.tar.gz"
+          #conda-pack -n "${{ inputs.model }}" -o "${{ inputs.model }}-${{ inputs.python_version }}-packed.tar.gz"
 
           echo "conda-lock and conda-pack finished."
 
@@ -192,5 +192,5 @@ jobs:
           path: |
             benchmarks/matbench_v0.1_${{ inputs.model }}/*.lock.yml
             benchmarks/matbench_v0.1_${{ inputs.model }}/*.conda-lock.yml
-            benchmarks/matbench_v0.1_${{ inputs.model }}/*-${{ inputs.python_version }}-packed.tar.gz
+
           if-no-files-found: warn
