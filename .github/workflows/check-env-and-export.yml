@@ -190,7 +190,5 @@ jobs:
         with:
           name: ${{ inputs.model }}-${{ inputs.python_version }}-lock-and-pack
           path: |
-            benchmarks/matbench_v0.1_${{ inputs.model }}/*.lock.yml
             benchmarks/matbench_v0.1_${{ inputs.model }}/*.conda-lock.yml
-
           if-no-files-found: warn
