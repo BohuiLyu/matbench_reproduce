@@ -1,0 +1,232 @@
+name: check-env-and-export
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "The model name"
+        required: true
+        type: string
+      python_version:
+        description: "Python version to use"
+        required: true
+        type: string
+      # python_package_installer:
+      #   description: "Python package installer to use"
+      #   required: false
+      #   type: string
+      #   default: "pip"
+      system_dependencies:
+        description: "Additional system dependencies to install"
+        required: false  
+        type: string
+        default: "git"
+      conda_env_file:
+        description: "Optional Conda environment YAML file for setup"
+        required: false
+        type: string
+      pip_requirements_file:
+        description: "Optional pip requirements.txt file for setup"
+        required: false
+        type: string
+      custom_pip_lines:
+        description: "Optional custom pip install lines; each commands should be separated by semicolon"
+        required: false
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          if [ ! -z "${{ inputs.system_dependencies }}" ]; then
+            echo "Installing additional dependencies: ${{ inputs.system_dependencies }}"
+            sudo apt-get update
+            sudo apt-get install -y ${{ inputs.system_dependencies }}
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4 
+
+      - name: Install Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Set up Conda environment
+        run: |
+            eval "$(conda shell.bash hook)"
+            cd benchmarks/matbench_v0.1_${{ inputs.model }}
+
+            # Create a new Conda environment with the appropriate setup
+            if [ ! -z "${{ inputs.conda_env_file }}" ] && [ -f "${{ inputs.conda_env_file }}" ]; then
+              echo "Setting up Conda environment from YAML file: ${{ inputs.conda_env_file }}"
+              conda env create --name ${{ inputs.model }} --file ${{ inputs.conda_env_file }}
+              echo "Conda environment created with ${{ inputs.conda_env_file }}. Exiting step..."
+              exit 0  
+            fi
+
+            conda create -y --name ${{ inputs.model }} python=${{ inputs.python_version }}
+
+            # Activate Conda environment
+            conda activate ${{ inputs.model }} 
+
+            # Install dependencies from pip requirements if provided
+            if [ ! -z "${{ inputs.pip_requirements_file }}" ] && [ -f "${{ inputs.pip_requirements_file }}" ]; then
+              echo "Installing pip dependencies from file: ${{ inputs.pip_requirements_file }}"
+              pip install -r ${{ inputs.pip_requirements_file }}
+              
+              echo "Conda environment created with ${{ inputs.pip_requirements_file }}. Exiting step..."
+              exit 0  
+
+            elif [ ! -z "${{ inputs.custom_pip_lines }}" ]; then
+              echo "Installing custom requirements: ${{ inputs.custom_pip_lines }}"
+              eval "${{ inputs.custom_pip_lines }}"
+              echo "Conda environment created with custom requirements. Exiting step..."
+              exit 0
+
+            else
+              # Extract and install required packages from info.json
+              PACKAGES=$(python -c "import json;d=json.load(open('info.json'));f=lambda x:[x] if isinstance(x,str) else [y for i in x for y in f(i)] if isinstance(x,(list,tuple)) else [y for v in x.values() for y in f(v)] if isinstance(x,dict) else [];seen=set();out=[];[out.append(s) or seen.add(s) for s in (t.strip() for t in f(d.get('requirements',{}).get('python',[]))) if s and s not in seen];print(' '.join(out))")
+
+              echo "PACKAGES: $PACKAGES"              
+              
+              PACKAGES_CONDA=${PACKAGES//==/=}
+              pip install $PACKAGES || conda install $PACKAGES_CONDA -c conda-forge -c pytorch -c pyg -y
+              echo "Conda environment created with info.json. Exiting step..."
+
+            fi
+
+      - name: Install matbench
+        run: |
+            eval "$(conda shell.bash hook)"
+            cd benchmarks/matbench_v0.1_${{ inputs.model }}
+
+            # Activate Conda environment
+            conda activate ${{ inputs.model }}
+            if python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('matbench') else 1)"; then
+              exit 0
+            else
+              pip install matbench
+            fi
+            
+            
+
+      - name: Run the importing test
+        shell: bash -l {0}
+        run: |
+            set -Eeuo pipefail
+      
+            eval "$(conda shell.bash hook)"
+            cd "benchmarks/matbench_v0.1_${{ inputs.model }}"
+      
+            conda activate "${{ inputs.model }}"
+      
+            # 确保 nbconvert / jupyter-core 可用（先试 import，不行再装）
+            if ! python -c "import nbconvert, jupyter_core" >/dev/null 2>&1; then
+              conda install -y nbconvert jupyter-core || python -m pip install -U nbconvert jupyter
+            fi
+      
+            shopt -s nullglob
+      
+            # 用模块方式调用 nbconvert，避免某些 runner 上 jupyter 脚本不在 PATH
+            for nb in *.ipynb; do
+              python -m jupyter nbconvert --to script "$nb"
+            done
+      
+            python -c "import ast,pathlib; m=set(); [m.add(a.name.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.Import) for a in node.names]; [m.add(node.module.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.ImportFrom) and node.level==0 and node.module]; open('imports_only.py','w',encoding='utf-8').write(''.join(f'import {x}\n' for x in sorted(filter(None,m))))"
+      
+            # 运行导入测试（文件为空也没关系）
+            python imports_only.py
+          
+            OUT="${{ inputs.model }}-${{ inputs.python_version }}.yml"
+            conda env export -n "${{ inputs.model }}" --no-builds | sed '/^prefix: /d' > "$OUT"
+            echo "Environment exported to: $OUT"
+            ls -lh "$OUT"
+
+      - name: Upload exported env
+        uses: actions/upload-artifact@v4
+        with:
+            name: ${{ inputs.model }}-${{ inputs.python_version }}-env
+            path: benchmarks/matbench_v0.1_${{ inputs.model }}/${{ inputs.model }}-${{ inputs.python_version }}.yml
+            if-no-files-found: error
+
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: build-env
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download env artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.model }}-${{ inputs.python_version }}-env
+          path: .
+
+      - name: Free disk space on runner
+        run: |
+          set -Eeuo pipefail
+          df -h
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache || true
+          docker system prune -af || true
+          df -h
+
+      - name: Prepare Docker context
+        run: |
+          set -Eeuo pipefail
+
+          MODEL="${{ inputs.model }}"
+          ENV_TAR="${MODEL}-env.tar.gz"
+
+          if [ ! -f "$ENV_TAR" ]; then
+            echo "env tar not found at repo root: $ENV_TAR"
+            pwd
+            ls -lh
+            exit 1
+          fi
+
+          cd benchmarks/matbench_v0.1_${MODEL}
+          cp "../../$ENV_TAR" env.tar.gz
+
+          cat > Dockerfile << 'EOF'
+          FROM continuumio/miniconda3
+          WORKDIR /workspace
+          COPY env.tar.gz /tmp/env.tar.gz
+          COPY . /workspace
+          RUN mkdir -p /opt/conda/envs/${MODEL_NAME} \
+              && tar -xzf /tmp/env.tar.gz -C /opt/conda/envs/${MODEL_NAME} \
+              && /opt/conda/envs/${MODEL_NAME}/bin/conda-unpack \
+              && rm /tmp/env.tar.gz
+          ENV PATH=/opt/conda/envs/${MODEL_NAME}/bin:$PATH
+          CMD ["bash"]
+          EOF
+
+          sed -i "s/\${MODEL_NAME}/${MODEL}/g" Dockerfile
+
+      - name: Build Docker image tar with buildx
+        run: |
+          set -Eeuo pipefail
+          cd benchmarks/matbench_v0.1_${{ inputs.model }}
+
+          IMAGE_TAG=$(echo "${{ inputs.model }}-py${{ inputs.python_version }}" | tr '[:upper:]' '[:lower:]')
+          OUT="${IMAGE_TAG}.tar"
+
+          docker buildx create --use --name buildx-builder || docker buildx use buildx-builder
+          docker buildx build --progress plain -t "$IMAGE_TAG" --output type=docker,dest="$OUT" .
+
+          echo "IMAGE_TAR=$OUT" >> $GITHUB_ENV
+          ls -lh "$OUT"
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ inputs.model }}-py${{ inputs.python_version }}
+          path: benchmarks/matbench_v0.1_${{ inputs.model }}/$(echo "${{ inputs.model }}-py${{ inputs.python_version }}" | tr '[:upper:]' '[:lower:]').tar
+          if-no-files-found: error
