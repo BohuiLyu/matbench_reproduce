@@ -35,7 +35,7 @@ on:
         type: string
 
 jobs:
-  setup:
+  build-env:
     runs-on: ubuntu-latest
 
     steps:
