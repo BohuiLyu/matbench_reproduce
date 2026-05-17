@@ -21,7 +21,7 @@ jobs:
         id: get-folders
         run: |
             cd benchmarks
-            models='"GN-OA"'
+            models='"gptchem"'
             echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
     
       - name: Define Python version list
