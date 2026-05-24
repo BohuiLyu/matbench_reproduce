@@ -32,7 +32,7 @@ jobs:
 
   # Default env setup, by installing the package indicated in the requirements field in info.json
   default-env-setup:
-    name: "Default env for: ${{ matrix.model }} on ${{ matrix.python_version }}"  
+    name: "Python${{ matrix.python_version }} for: ${{ matrix.model }}"  
     needs: generate-matrix
     strategy:
       fail-fast: false
