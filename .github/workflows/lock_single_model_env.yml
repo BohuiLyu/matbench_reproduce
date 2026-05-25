@@ -27,7 +27,7 @@ jobs:
       - name: Define Python version list
         id: set-versions
         run: |
-          echo "python_versions=['3.9']" >> $GITHUB_OUTPUT
+          echo "python_versions=['3.8']" >> $GITHUB_OUTPUT
 
 
   # Default env setup, by installing the package indicated in the requirements field in info.json
