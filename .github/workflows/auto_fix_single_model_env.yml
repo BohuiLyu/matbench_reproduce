@@ -28,5 +28,5 @@ jobs:
         python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
     uses: ./.github/workflows/env-autofix-and-import-check.yml
     with:
-      model: "SchNet_kgcnn_v2.1.0"
+      model: "TPOT"
       python_version: ${{ matrix.python_version }}
