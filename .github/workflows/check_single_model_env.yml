@@ -1,47 +1,42 @@
 name: Check Single Model Env
 
-on: 
-  push:
-    # Run only when this file is modified
-    paths:
-      - .github/workflows/check_single_model_env.yml
-      - .github/workflows/env-setup-and-import-check.yml
+run-name: >-
+  Check ${{ inputs.model }}
+  on Python ${{ inputs.python_versions }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "MatBench submission name, without the matbench_v0.1_ prefix"
+        required: true
+        default: "Ax_10_90_CrabNet_v1.2.7"
+        type: string
+
+      python_versions:
+        description: 'Python versions as valid JSON, for example ["3.8","3.9","3.10"]'
+        required: true
+        default: '["3.6","3.7","3.8","3.9","3.10","3.11","3.12"]'
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  generate-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      python_versions: ${{ steps.set-versions.outputs.python_versions }}
-      models: ${{ steps.get-folders.outputs.models }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4 
+  check-environment:
+    name: >-
+      ${{ inputs.model }} / Python ${{ matrix.python_version }}
 
-      - name: Get all the folder names in the benchmarks directory (remove the prefix "matbench_v0.1_" and the suffix '/' and enclose each folder name in single quotes) 
-        id: get-folders
-        run: |
-            cd benchmarks
-            models='"Ax_10_90_CrabNet_v1.2.7"'
-            echo "models=[$models]" >> $GITHUB_OUTPUT  # Corrected output format
-    
-      - name: Define Python version list
-        id: set-versions
-        run: |
-          echo "python_versions=['3.6','3.7','3.8','3.9','3.10','3.11','3.12']" >> $GITHUB_OUTPUT
-
-
-  # Default env setup, by installing the package indicated in the requirements field in info.json
-  default-env-setup:
-    name: "Python${{ matrix.python_version }} for: ${{ matrix.model }}"  
-    needs: generate-matrix
     strategy:
       fail-fast: false
+      max-parallel: 4
+
       matrix:
-        python_version: ${{ fromJson(needs.generate-matrix.outputs.python_versions) }}
-        model: ${{ fromJson(needs.generate-matrix.outputs.models) }}
-        #python_package_installer: ['pip', 'conda']
+        python_version: ${{ fromJSON(inputs.python_versions) }}
+
     uses: ./.github/workflows/env-setup-and-import-check.yml
+
     with:
-      model: ${{ matrix.model }}
+      model: ${{ inputs.model }}
       python_version: ${{ matrix.python_version }}
       system_dependencies: git
