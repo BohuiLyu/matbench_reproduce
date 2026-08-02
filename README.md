@@ -56,13 +56,13 @@ The original MatBench source code remains available from the [official repositor
 
 ## Running the GitHub Actions workflow
 
-For public reuse, the top-level workflow should expose the submission name and Python versions through `workflow_dispatch` inputs. After this interface is enabled:
-
-1. Open the repository's **Actions** tab.
-2. Select **Check Single Model Env**/**Auto Fix Single Model Env**/**Lock and Pack Single Model Env**.
-3. Choose **Run workflow**.
-4. Enter the MatBench submission name and Python versions.
-5. Download the exported environment artifact from the completed workflow run.
+1. Fork the repository.
+2. Open the Actions tab in the fork.
+3. Enable workflows if prompted.
+4. Select `Check Single Model Env`/`Auto Fix Single Model Env`/`Lock and Pack Single Model Env`.
+5. Choose **Run workflow**.
+6. Enter the submission name and Python versions.
+7. Run the workflow and download the exported environment artifact.
 
 Example command-line invocation with the GitHub CLI:
 
