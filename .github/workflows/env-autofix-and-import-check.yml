@@ -49,7 +49,6 @@ jobs:
               break
             fi
           
-            # 两类典型错误：1) 找不到满足条件的版本；2) 解析到冲突
             ERR_LINE_REQ=$(grep -m1 "Could not find a version that satisfies the requirement" pip_error.log || true)
             ERR_LINE_CONF=$(grep -m1 "^ERROR: Cannot install " pip_error.log | grep -m1 "because these package versions have conflicting dependencies" || true)
             #ERR_LINE_WHEEL=$(grep -m1 "ERROR: Failed building wheel for" pip_error.log || true)
@@ -88,7 +87,6 @@ jobs:
                 echo "Fallback fix: $FAILING_PKG → $FIXED_PKG"
               fi
           
-              # 安全替换（精确匹配整行 token，避免 sed 正则被 [] 等字符干扰）
               tr ' ' '\n' <<<"$PACKAGES" \
                 | awk -v old="$FAILING_PKG" -v new="$FIXED_PKG" '{print ($0==old)?new:$0}' \
                 | paste -sd' ' - > new_pkgs.txt
@@ -112,7 +110,7 @@ jobs:
               for tok in $PACKAGES; do
                 base="${tok%%==*}"; name="${base%%[*}"
                 if grep -qx "$name" conflict_pkgs.txt; then
-                  tok="$base"   # 只对冲突包移除版本锁定
+                  tok="$base"
                 end_if=true
                 fi
                 NEW_PACKAGES+="$tok "
@@ -122,11 +120,9 @@ jobs:
               continue
             #elif [[ -n "$ERR_LINE_WHEEL" ]]; then
             else
-              # 例：ERROR: Failed building wheel for pymatgen.
+
               echo "⚠️  Detected error. Unpinning all versions in PACKAGES…"
-              # 把空格分隔的 tokens 逐个处理：
-              # - 删除任意版本运算符 + 版本号（==, >=, <=, ~=, !=, ===）
-              # - 去重但保序
+
               PACKAGES=$(
                 tr ' ' '\n' <<<"$PACKAGES" \
                 | sed -E 's/(==|>=|<=|~=|!=|===)[^ ]+//' \
@@ -173,23 +169,20 @@ jobs:
           cd "benchmarks/matbench_v0.1_${{ inputs.model }}"
       
           conda activate "${{ inputs.model }}"
-      
-          # 确保 nbconvert / jupyter-core 可用（先试 import，不行再装）
+
           if ! python -c "import nbconvert, jupyter_core" >/dev/null 2>&1; then
             conda install -y nbconvert jupyter-core || python -m pip install -U nbconvert jupyter
           fi
       
           shopt -s nullglob
       
-          # 用模块方式调用 nbconvert，避免某些 runner 上 jupyter 脚本不在 PATH
+
           for nb in *.ipynb; do
             python -m jupyter nbconvert --to script "$nb"
           done
       
           python -c "import ast,pathlib; m=set(); [m.add(a.name.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.Import) for a in node.names]; [m.add(node.module.split('.')[0]) for p in pathlib.Path('.').glob('*.py') if p.name!='imports_only.py' for node in ast.walk(ast.parse(p.read_text(encoding='utf-8',errors='ignore'),filename=str(p))) if isinstance(node,ast.ImportFrom) and node.level==0 and node.module]; open('imports_only.py','w',encoding='utf-8').write(''.join(f'import {x}\n' for x in sorted(filter(None,m))))"
 
-      
-          # 运行导入测试（文件为空也没关系）
           python imports_only.py
           
           OUT="${{ inputs.model }}-${{ inputs.python_version }}.yml"
