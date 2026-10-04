@@ -80,9 +80,9 @@ When using the reproducibility workflows, reconstructed environments, or re-exec
 @article{lyu_matbench_reproducibility,
   title   = {When Code Does Not Run: Reproducibility Challenges in Materials Machine Learning Benchmarks},
   author  = {Lyu, Bohui and Bonini, John and Zhang, Mao and Sadeghi, Amin and Jaberi, Ali and Hattrick-Simpers, Jason and Choudhary, Kamal and Wines, Daniel and Li, Kangming},
-  journal = {<journal>},
-  year    = {<year>},
-  doi     = {<doi>}
+  journal = {AI Agent},
+  year    = {2026},
+  doi     = {10.20517/aiagent.2026.31}
 }
 ```
 
